@@ -1,0 +1,67 @@
+version: "3.7"
+
+services:
+  microservice_1:
+    build:
+      ./balances
+    command: bash -c "python3 ./balances/manage.py makemigrations && python3 ./balances/manage.py migrate && python3 ./balances/manage.py runserver 0.0.0.0:8001"
+    volumes:
+      - .:/code
+    ports:
+      - "8001:8001"
+    restart: always
+    depends_on:
+      - postgresql
+    links:
+      - postgresql
+  microservice_2:
+    build:
+      ./statistic
+    command: bash -c "cd statistic/ && celery -A app worker --beat  --loglevel=INFO"
+    volumes:
+      - .:/code
+    restart: always
+    depends_on:
+      - rabbitmq
+      - clickhouse
+    links:
+      - rabbitmq
+      - clickhouse
+  rabbitmq:
+    hostname: rabbit
+    image: rabbitmq:3-management
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=mypass
+    ports:
+      - "5672:5672"
+      - "5462:5462"
+      - "15672:15672"  # here, we can access rabbitmq management plugin
+  postgresql:
+    restart: always
+    image: sameersbn/postgresql:10-2
+    ports:
+      - "5432:5432"
+    environment:
+      - DEBUG=false
+
+      - DB_USER=admin
+      - DB_PASS=mypass
+      - DB_NAME=geo
+      - DB_TEMPLATE=
+
+      - DB_EXTENSION=
+
+      - REPLICATION_MODE=
+      - REPLICATION_USER=
+      - REPLICATION_PASS=
+      - REPLICATION_SSLMODE=
+    volumes:
+      - /srv/docker/postgresql:/var/lib/postgresql
+  clickhouse:
+    image: yandex/clickhouse-server:20.6
+    volumes:
+      - ./statistic/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+    ports:
+      - "8123:8123"
+      - "9000:9000"
